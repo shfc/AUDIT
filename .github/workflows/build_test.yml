@@ -16,3 +16,10 @@ jobs:
       - uses: actions/setup-node@v3
       - run: npm ci
       - run: python3 build.py test
+      - name: Archive test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AUDIT-test-artifacts
+          path: |
+            extension
+          retention-days: 5
