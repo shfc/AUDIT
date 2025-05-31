@@ -56,24 +56,28 @@ async function getData() {
     const rawId = accessToken.claims.sub;
     const id = rawId.substring(1);
 
-    const semCode = await getSemCode(id, token);
-    const rawData = await getTimetable(id, token, semCode);
-    try {
+    const semCodes = await getSemCodes(id, token);
+    for (let i = 0; i < semCodes.length; i++) {
+      appendLog(logLevels.INFO, `Semester Code: ${semCodes[i].code} - ${semCodes[i].name}`);
+      const rawData = await getTimetable(id, token, semCodes[i].code);
+      try {
 
-      const calendar = createCalendar("University", rawData);
-      const iCal = generateICal(calendar);
-      if (iCal === "") {
-        appendLog(logLevels.ERROR, "iCal blob URL is empty");
-        throw new Error("iCal blob URL is empty");
+        const calendar = createCalendar("University", rawData);
+        const iCal = generateICal(calendar);
+        if (iCal === "") {
+          appendLog(logLevels.ERROR, "iCal blob URL is empty");
+          throw new Error("iCal blob URL is empty");
+        }
+        const downloadLink = document.createElement("a");
+        downloadLink.href = iCal;
+
+        downloadLink.download = `uni-timetable-${semCodes[i].name.toLowerCase().replaceAll(" ","-")}.ics`;
+        downloadLink.click();
+        appendLog(logLevels.INFO, "Downloaded iCal file");
+        addProgress("Downloaded iCal file");
+      } catch (e) {
+        appendLog(logLevels.ERROR, `Failed to generate calendar: ${e}`);
       }
-      const downloadLink = document.createElement("a");
-      downloadLink.href = iCal;
-      downloadLink.download = downloadFileName;
-      downloadLink.click();
-      appendLog(logLevels.INFO, "Downloaded iCal file");
-      addProgress("Downloaded iCal file");
-    } catch (e) {
-      appendLog(logLevels.ERROR, `Failed to generate calendar: ${e}`);
     }
   } catch (error: string | any) {
     appendLog(logLevels.ERROR, error);
@@ -105,6 +109,50 @@ async function getSemCode(id: any, token: any) {
     return resData.data.query.rows[0]["A.STRM"];
   } catch (error: string | any) {
     appendLog(logLevels.ERROR, error);
+  }
+}
+
+
+async function getSemCodes(id: any, token: any): Promise<{ code: string; name: string }[]> {
+  try {
+    appendLog(logLevels.INFO, "Fetching semester code");
+    const res = await fetch(
+      `https://api.adelaide.edu.au/api/generic-query-structured/v1/?target=/system/TIMETABLE_TERMS/queryx/${id}&MaxRows=9999`,
+      {
+        headers: {
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers":
+            "accept,authorization,access-control-allow-headers,access-control-allow-origin",
+          "access-control-allow-methods": "GET,OPTIONS",
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    if (!res.ok) {
+      appendLog(logLevels.ERROR, "Failed to fetch semester codes, got: ${res.status} as response");
+      throw new Error("Failed to fetch semester codes");
+    }
+    appendLog(logLevels.INFO, "Fetched semester codes");
+    const resData = await res.json();
+    appendLog(logLevels.INFO, "Parsed semester codes");
+    // return [{code: "", name: ""}, {}];
+    if (resData.data.query.rows.length === 0) {
+      appendLog(logLevels.ERROR, "No semester codes found");
+      throw new Error("No semester codes found");
+    }else{
+      const data = resData.data.query.rows;
+      let semCodes = [];
+      for (let i = 0; i < data.length; i++) {
+        semCodes.push({
+          code: data[i]["STRM"],
+          name: data[i]["DESCR"],
+        });
+      }
+      return semCodes
+    }
+  } catch (error: string | any) {
+    appendLog(logLevels.ERROR, error);
+    return [];
   }
 }
 
